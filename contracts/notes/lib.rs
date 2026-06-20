@@ -52,3 +52,35 @@ impl LendingContract {
             is_repaid: false,
         };
         let mut loans: Vec<Loan> = env.storage().instance().get(&LOAN_DATA).unwrap_or(Vec::new(&env));
+        loans.push_back(loan);
+        env.storage().instance().set(&LOAN_DATA, &loans);
+        loan_id
+    }
+
+    pub fn repay(env: Env, borrower: Address, loan_id: u64) -> i128 {
+        borrower.require_auth();
+        let mut loans: Vec<Loan> = env.storage().instance().get(&LOAN_DATA).unwrap_or(Vec::new(&env));
+        for i in 0..loans.len() {
+            let loan = loans.get(i).unwrap();
+            if loan.id == loan_id {
+                assert!(!loan.is_repaid, "Loan already repaid");
+                assert!(loan.borrower == borrower, "Not your loan");
+                let interest = (loan.amount * loan.interest_bps as i128) / 10_000;
+                let repay_amount = loan.amount + interest;
+                let repaid_loan = Loan {
+                    id: loan.id,
+                    borrower: loan.borrower,
+                    amount: loan.amount,
+                    interest_bps: loan.interest_bps,
+                    is_repaid: true,
+                };
+                loans.set(i, repaid_loan);
+                env.storage().instance().set(&LOAN_DATA, &loans);
+                let pool: i128 = env.storage().instance().get(&POOL_BAL).unwrap_or(0i128);
+                env.storage().instance().set(&POOL_BAL, &(pool + repay_amount));
+                return repay_amount;
+            }
+        }
+        panic!("Loan not found");
+    }
+}
